@@ -133,9 +133,14 @@ cd "$WORKING_DIR"
 if [ -f "app.jl" ]; then
     julia --project="$WORKING_DIR" -e 'using Pkg; Pkg.Registry.update(); Pkg.add(["Genie", "DataFrames", "CSV", "Test", "HTTP", "JSON3", "FilePaths"]); Pkg.instantiate()'
     julia --project="$WORKING_DIR" app.jl &
-    sleep 5  # Wait for the server to start
-    curl http://localhost:8000/hello
-    curl http://localhost:8000/data
+    sleep 15  # Increased sleep time to ensure the server starts
+    # Retry curl commands up to 3 times with a 5-second delay
+    for i in {1..3}; do
+        curl http://localhost:8000/hello && break || sleep 5
+    done
+    for i in {1..3}; do
+        curl http://localhost:8000/data && break || sleep 5
+    done
 else
     echo "app.jl not found. Skipping Julia app tests."
 fi
