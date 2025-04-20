@@ -1,0 +1,8 @@
+requests
+gitpython
+pytest
+flask
+pandas
+github3.py
+psutil
+autopep8
