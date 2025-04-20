@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import re
 from pathlib import Path
 from aix.api import check_api_availability
 from aix.codegen import generate_code
@@ -95,7 +96,7 @@ def main():
                 "Output only the Julia code, no markdown or code fences. "
                 "Example:\nusing Genie, Genie.Renderer.Json, DataFrames, CSV, FilePaths\nGenie.config.server_port = 8000\nroute(\"/hello\") do\n    json(Dict(\"message\" => \"Hello, World!\"))\nend\nroute(\"/data\") do\n    if isfile(\"/Users/craig/aix/data.csv\")\n        df = CSV.read(\"/Users/craig/aix/data.csv\", DataFrame)\n        json(first(df, 5))\n    else\n        json(Dict(\"error\" => \"Dataset not found\"))\n    end\nend\nGenie.up()\n"
             )
-        code, code_model = generate_code(code_prompt, args.api_base, args.workspace, api_key, args.mode, args.language, args.code_model, workspace_config)
+        code, code_model = generate_code(code_prompt, args.api_base, args.workspace, api_key, args.mode, args.language, args.code_model, workspace_config, args.chat_model, args.agent_model)
         code_file = f"{REPO_PATH}/app.py" if args.language == "python" else f"{REPO_PATH}/index.html" if args.language == "html" else f"{REPO_PATH}/app.jl"
         with open(code_file, "w") as f:
             f.write(code)
@@ -111,8 +112,8 @@ def main():
                 "Import Path from pathlib to check for data.csv existence. "
                 "Ensure proper indentation for all code blocks with 4 spaces per level. "
                 "Output only the Python code, no markdown, code fences, or explanatory text. "
-                "Use relative import since app.py is in the parent directory. "
-                "Example:\nfrom flask import Flask\nimport pytest\nfrom pathlib import Path\nfrom ..app import app\n\n@pytest.fixture\ndef client():\n    app.config['TESTING'] = True\n    with app.test_client() as client:\n        yield client\n\ndef test_hello_endpoint(client):\n    response = client.get('/hello')\n    assert response.status_code == 200\n    assert response.json == {'message': 'Hello, World!'}\n\ndef test_data_endpoint(client):\n    response = client.get('/data')\n    assert response.status_code == 200\n    if Path('data.csv').exists():\n        assert isinstance(response.json, dict)\n    else:\n        assert response.json == {'error': 'Dataset not found'}\n"
+                "Use absolute import for app.py since tests will run with PYTHONPATH set to the parent directory. "
+                "Example:\nfrom flask import Flask\nimport pytest\nfrom pathlib import Path\nfrom app import app\n\n@pytest.fixture\ndef client():\n    app.config['TESTING'] = True\n    with app.test_client() as client:\n        yield client\n\ndef test_hello_endpoint(client):\n    response = client.get('/hello')\n    assert response.status_code == 200\n    assert response.json == {'message': 'Hello, World!'}\n\ndef test_data_endpoint(client):\n    response = client.get('/data')\n    assert response.status_code == 200\n    if Path('data.csv').exists():\n        assert isinstance(response.json, dict)\n    else:\n        assert response.json == {'error': 'Dataset not found'}\n"
             )
         elif args.language == "html":
             test_prompt = (
@@ -136,7 +137,12 @@ def main():
                 "Output only the Julia code, no markdown or code fences. "
                 "Example:\nusing Test, HTTP, JSON3, FilePaths\ninclude(\"/Users/craig/aix/app.jl\")\n@testset \"Genie API\" begin\n    response = HTTP.get(\"http://localhost:8000/hello\")\n    @test response.status == 200\n    json_data = JSON3.read(response.body)\n    @test json_data.message == \"Hello, World!\"\n    response = HTTP.get(\"http://localhost:8000/data\")\n    @test response.status == 200\n    if isfile(\"/Users/craig/aix/data.csv\")\n        json_data = JSON3.read(response.body)\n        @test haskey(json_data, :columns)\n        @test length(json_data.columns) == 5\n    else\n        @test JSON3.read(response.body) == Dict(\"error\" => \"Dataset not found\")\n    end\nend\n"
             )
-        tests, test_model = generate_code(test_prompt, args.api_base, args.workspace, api_key, args.mode, "javascript" if args.language == "html" else args.language, args.doc_model, workspace_config)
+        tests, test_model = generate_code(test_prompt, args.api_base, args.workspace, api_key, args.mode, "javascript" if args.language == "html" else args.language, args.doc_model, workspace_config, args.chat_model, args.agent_model)
+        
+        # Post-process Python test code to enforce absolute imports
+        if args.language == "python":
+            tests = re.sub(r'from \.\.app import app', r'from app import app', tests)
+        
         os.makedirs(f"{REPO_PATH}/tests/{args.language}", exist_ok=True)
         if args.language != "html":
             with open(f"{REPO_PATH}/tests/{args.language}/__init__.py", "w") as f:
@@ -173,7 +179,7 @@ def main():
                 "Include installation, running, and testing instructions. Output only the markdown content, no code fences around the entire markdown. "
                 "Example:\n# Genie API\n\nA simple API with /hello and /data endpoints.\n\n## Installation\n\n1. Install Julia 1.11+\n2. Install dependencies:\n```bash\njulia -e \"using Pkg; Pkg.add([\\\"Genie\\\", \\\"DataFrames\\\", \\\"CSV\\\", \\\"Test\\\", \\\"HTTP\\\", \\\"JSON3\\\", \\\"FilePaths\\\"])\"\n```\n\n## Running\n\n1. Run the app:\n```bash\njulia --project=. app.jl\n```\n2. Access endpoints:\n```bash\ncurl http://localhost:8000/hello\ncurl http://localhost:8000/data\n```\n\n## Testing\n\nRun tests:\n```bash\njulia --project=. -e \"cd(\\\"tests/julia\\\"); include(\\\"test_app.jl\\\")\"\n```"
             )
-        readme, doc_model = generate_code(doc_prompt, args.api_base, args.workspace, api_key, args.mode, args.language, args.doc_model, workspace_config)
+        readme, doc_model = generate_code(doc_prompt, args.api_base, args.workspace, api_key, args.mode, args.language, args.doc_model, workspace_config, args.chat_model, args.agent_model)
         with open(f"{REPO_PATH}/README.md", "w") as f:
             f.write(readme)
         logger.info("Generated and saved README.md")
